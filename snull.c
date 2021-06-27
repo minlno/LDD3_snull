@@ -27,6 +27,33 @@ struct snull_priv {
 
 struct net_device *snull_devs[2];
 
+/*
+ * Open and Close
+ */
+
+int snull_open(struct net_device *dev)
+{
+	memcpy(dev->dev_addr, "\0SNUL0", ETH_ALEN);
+	if (dev == snull_devs[1])
+		dev->dev_addr[ETH_ALEN-1]++;
+	if (use_napi) {
+		struct snull_priv *priv = netdev_priv(dev);
+		napi_enable(&priv->napi);
+	}
+	netif_start_queue(dev);
+	return 0;
+}
+
+int snull_release(struct net_device *dev)
+{
+	netif_stop_queue(dev);
+	if (use_napi) {
+		struct snull_priv *priv = netdev_priv(dev);
+		napi_disable(&priv->napi);
+	}
+	return 0;
+}
+
 static const struct header_ops snull_header_ops = {
 	.create			= snull_header,
 };
