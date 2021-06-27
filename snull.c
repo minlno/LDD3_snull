@@ -67,8 +67,10 @@ void snull_init(struct net_device *dev)
 		netif_napi_add(dev, &priv->napi, snull_poll, 2);
 	}
 	spin_lock_init(&priv->lock);
+	priv->dev = dev;
 
 	snull_rx_ints(dev, 1);
+	snull_setup_pool(dev);
 }
 
 static int __init snull_init_module(void)
