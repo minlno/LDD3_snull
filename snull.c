@@ -3,6 +3,8 @@
 #include <linux/kernel.h>
 #include <linux/netdevice.h>
 
+static int lockup = 0;
+module_param(lockup, int, 0);
 
 static int timeout = SNULL_TIMEOUT;
 module_param(timeout, int, 0);
@@ -27,6 +29,58 @@ struct snull_priv {
 };
 
 struct net_device *snull_devs[2];
+
+/*
+ * Transmit a packet (called by the kernel)
+ */
+int snull_tx(struct sk_buff *skb, struct net_device *dev)
+{
+	int len;
+	char *data, shortpkt[ETH_ZLEN];
+	struct snull_priv *priv = netdev_priv(dev);
+
+	data = skb->data;
+	len = skb->len;
+	if (len < ETH_ZLEN) {
+		memset(shortpkt, 0, ETH_ZLEN);
+		memcpy(shortpkt, skb->data, skb->len);
+		len = ETH_ZLEN;
+		data = shortpkt;
+	}
+	netif_trans_update(dev);
+
+	/* Remember the skb, so we can free it at interrupt time */
+	priv->skb = skb;
+
+	snull_hw_tx(data, len, dev);
+
+	return 0;
+}
+
+/*
+ * Deal with a transmit timeout
+ */
+void snull_tx_timeout(struct net_device *dev)
+{
+	struct snull_priv *priv = netdev_priv(dev);
+	struct netdev_queue *txq = netdev_get_tx_queue(dev, 0);
+
+	PDEBUG("Transmit timeout at %ld, latency %ld\n", jiffies,
+					jiffies - txq->trans_start);
+	/* Simulate a transmission interrupt to get things moving */
+	priv->status |= SNULL_TX_INTR;
+	snull_interrupt(0, dev, NULL);
+	priv->stats.tx_errors++;
+
+	/* Reset packet pool */
+	spin_lock(&priv->lock);
+	snull_teardown_pool(dev);
+	snull_setup_pool(dev);
+	spin_unlock(&priv->lock);
+
+	netif_wake_queue(dev);
+	return;
+}
 
 /*
  * Open and Close
