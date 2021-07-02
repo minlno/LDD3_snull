@@ -31,6 +31,39 @@ struct snull_priv {
 struct net_device *snull_devs[2];
 
 /*
+ * Receive a packet: retrieve, encapsulate and pass over to upper levels
+ */
+void snull_rx(struct net_device *dev, struct snull_packet *pkt)
+{
+	struct sk_buff *skb;
+	struct snull_priv *priv = netdev_priv(dev);
+
+	/*
+	 * The packet has been retrieved from the transmission
+	 * medium. Build an skb around it, so upper laters can handle it
+	 */
+	skb = dev_alloc_skb(pkt->datalen + 2);
+	if (!skb) {
+		if (printk_ratelimit())
+			printk(KERN_NOTICE "snull rx: low on mem - packet dropped\n");
+		priv->stats.rx_dropped++;
+		goto out;
+	}
+	skb_reserve(skb, 2); /* align IP on 16B boundary */
+	memcpy(skb_put(skb, pkt->datalen), pkt->data, pkt->datalen);
+
+	/* Write metadata, and then pass to the receive level */
+	skb->dev = dev;
+	skb->protocol = eth_type_trans(skb, dev);
+	skb->ip_summed = CHECKSUM_UNNECESSARY;
+	priv->stats.rx_packets++;
+	priv->stats.rx_bytes += pkt->datalen;
+	netif_rx(skb);
+out:
+	return;
+}
+
+/*
  * Transmit a packet (called by the kernel)
  */
 int snull_tx(struct sk_buff *skb, struct net_device *dev)
