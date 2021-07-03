@@ -64,6 +64,54 @@ out:
 }
 
 /*
+ * The typical interrupt entry point
+ */
+static void snull_regular_interrupt(int irq, void *dev_id, struct pt_regs *regs)
+{
+	int statusword;
+	struct snull_priv *priv;
+	struct snull_packet *pkt = NULL;
+	/*
+	 * As usual, check the "device" pointer to be sure it is
+	 * really interrupting,
+	 * Then assign "struct device *dev"
+	 */
+	struct net_device *dev = (struct net_device *)dev_id;
+	/* ... and check with hw if it's really ours */
+
+	/* paranoid */
+	if (!dev)
+		return;
+
+	/* Lock the device */
+	priv = netdev_priv(dev);
+	spin_lock(&priv->lock);
+
+	/* retrieve statusword: real netdevices use I/O instructions */
+	statusword = priv->status;
+	priv->status = 0;
+	if (statusword & SNULL_RX_INTR) {
+		/* send it to snull_rx for handling */
+		pkt = priv->rx_queue;
+		if (pkt) {
+			priv->rx_queue = pkt->next;
+			snull_rx(dev, pkt);
+		}
+	}
+	if (statusword & SNULL_TX_INTR) {
+		/* a transmission is over: free the skb */
+		priv->stats.tx_packets++;
+		priv->stats.tx_bytes += priv->tx_packetlen;
+		dev_kfree_skb(priv->skb);
+	}
+
+	/* Unlock the device and we are done */
+	spin_unlock(&priv->lock);
+	if (pkt) snull_release_buffer(pkt); /* Do this outside the lock! */
+	return;
+}
+
+/*
  * Transmit a packet (called by the kernel)
  */
 int snull_tx(struct sk_buff *skb, struct net_device *dev)
