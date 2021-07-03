@@ -9,6 +9,7 @@ module_param(lockup, int, 0);
 static int timeout = SNULL_TIMEOUT;
 module_param(timeout, int, 0);
 
+
 /* 
  * This structure is private to each device. It is used to pass
  * packets in and out, so there is place for a packet
