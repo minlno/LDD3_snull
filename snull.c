@@ -84,6 +84,68 @@ void snull_teardown_pool(struct net_device *dev)
 }
 
 /*
+ * Buffer/pool management
+ */
+struct snull_packet *snull_get_tx_buffer(struct net_device *dev)
+{
+	struct snull_priv *priv = netdev_priv(dev);
+	unsigned long flags;
+	struct snull_packet *pkt;
+
+	spin_lock_irqsave(&priv->lock, flags);
+	pkt = priv->ppool;
+	if (!pkt) {
+		PDEBUG("Out of Pool\n");
+		return pkt;
+	}
+	priv->ppool = pkt->next;
+	if (priv->ppool == NULL) {
+		printk(KERN_INFO "Pool empty\n");
+		netif_stop_queue(dev);
+	}
+	spin_unlock_irqrestore(&priv->lock, flags);
+	return pkt;
+}
+
+void snull_release_buffer(struct snull_packet *pkt)
+{
+	unsigned long flags;
+	struct snull_priv *priv = netdev_priv(pkt->dev);
+
+	spin_lock_irqsave(&priv->lock, flags);
+	pkt->next = priv->ppool;
+	priv->ppool = pkt;
+	spin_unlock_irqrestore(&priv->lock, flags);
+	if (netif_queue_stopped(pkt->dev) && pkt->next == NULL)
+		netif_wake_queue(pkt->dev);
+}
+
+void snull_enqueue_buf(struct net_device *dev, struct snull_packet *pkt)
+{
+	unsigned long flags;
+	struct snull_priv *priv = netdev_priv(dev);
+
+	spin_lock_irqsave(&priv->lock, flags);
+	pkt->next = priv->rx_queue;
+	priv->rx_queue = pkt;
+	spin_unlock_irqrestore(&priv->lock, flags);
+}
+
+struct snull_packet *snull_dequeue_buf(struct net_device *dev)
+{
+	struct snull_priv *priv = netdev_priv(dev);
+	struct snull_packet *pkt;
+	unsigned long flags;
+
+	spin_lock_irqsave(&priv->lock, flags);
+	pkt = priv->rx_queue;
+	if (pkt != NULL)
+		priv->rx_queue = pkt->next;
+	spin_unlock_irqrestore(&priv->lock, flags);
+	return pkt;
+}
+
+/*
  * This function is called to fill up an eth header, since arp is not
  * available on the interface
  */
