@@ -40,6 +40,34 @@ static void (*snull_interrupt)(int, void *, struct pt_regs *);
 struct net_device *snull_devs[2];
 
 /*
+ * This function is called to fill up an eth header, since arp is not
+ * available on the interface
+ */
+int snull_rebuild_header(struct sk_buff *skb)
+{
+	struct ethhdr *eth = (struct ethhdr *)skb->data;
+	struct net_device *dev = skb->dev;
+
+	memcpy(eth->h_source, dev->dev_addr, dev->addr_len);
+	memcpy(eth->h_dest, dev->dev_addr, dev->addr_len);
+	eth->h_dest[ETH_ALEN-1] ^= 0x01;
+	return 0;
+}
+
+int snull_header(struct sk_buff *skb, struct net_device *dev,
+				unsigned short type, const void *daddr, const void *saddr,
+				unsigned len)
+{
+	struct ethhdr *eth = (struct ethhdr *)skb_push(skb, ETH_HLEN);
+
+	eth->h_proto = htons(type);
+	memcpy(eth->h_source, saddr ? saddr : dev->dev_addr, dev->addr_len);
+	memcpy(eth->h_dest,   daddr ? daddr : dev->dev_addr, dev->addr_len);
+	eth->h_dest[ETH_ALEN-1] ^= 0x01;
+	return (dev->hard_header_len);
+}
+
+/*
  * Receive a packet: retrieve, encapsulate and pass over to upper levels
  */
 void snull_rx(struct net_device *dev, struct snull_packet *pkt)
