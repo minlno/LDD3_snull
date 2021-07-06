@@ -25,11 +25,13 @@ struct snull_packet {
 	u8 data[ETH_DATA_LEN];
 };
 
+int pool_size = 8;
+module_param(pool_size, int, 0);
+
 /* 
  * This structure is private to each device. It is used to pass
  * packets in and out, so there is place for a packet
  */
-
 struct snull_priv {
 	struct net_device_stats stats;
 	int status;
@@ -47,6 +49,39 @@ struct snull_priv {
 static void (*snull_interrupt)(int, void *, struct pt_regs *);
 
 struct net_device *snull_devs[2];
+
+/*
+ * Set up a device's packet pool
+ */
+void snull_setup_pool(struct net_device *dev)
+{
+	struct snull_priv *priv = netdev_priv(dev);
+	int i;
+	struct snull_packet *pkt;
+
+	priv->ppool = NULL;
+	for (i = 0; i < pool_size; i++) {
+		pkt = kmalloc(sizeof(struct snull_packet), GFP_KERNEL);
+		if (pkt == NULL) {
+			printk(KERN_NOTICE "Ran out of memory allocating packet pool\n");
+			return;
+		}
+		pkt->dev = dev;
+		pkt->next = priv->ppool;
+		priv->ppool = pkt;
+	}
+}
+
+void snull_teardown_pool(struct net_device *dev)
+{
+	struct snull_priv *priv = netdev_priv(dev);
+	struct snull_packet *pkt;
+
+	while ((pkt = priv->ppool)) {
+		priv->ppool = pkt->next;
+		kfree(pkt);
+	}
+}
 
 /*
  * This function is called to fill up an eth header, since arp is not
