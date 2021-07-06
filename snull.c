@@ -15,6 +15,15 @@ module_param(timeout, int, 0);
 static int use_napi = 1;
 module_param(use_napi, int, 0);
 
+/*
+ * A structure representing an in-flight packet
+ */
+struct snull_packet {
+	struct snull_packet *next;
+	struct net_device *dev;
+	int		datalen;
+	u8 data[ETH_DATA_LEN];
+};
 
 /* 
  * This structure is private to each device. It is used to pass
