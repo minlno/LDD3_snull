@@ -1,14 +1,36 @@
+#DEBUG = y
+
+ifeq ($(DEBUG),y)
+	DEBFLAGS = -O -g -DSNULL_DEBUG
+else
+	DEBFLAGS = -O2
+endif
+
+EXTRA_CFLAGS += $(DEBFLAGS)
+EXTRA_CFLAGS += -I..
+
+ifneq ($(KERNELRELEASE),)
+
 obj-m += snull.o
 
-all:
-	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules
+else
+
+KERNELDIR ?= /lib/modules/$(shell uname -r)/build
+PWD		  := $(shell pwd)
+
+default:
+	$(MAKE) -C $(KERNELDIR) M=$(PWD) modules
+
+endif
+
 
 clean:
-	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean
-	rm -f Module.symvers modules.order
-	rm -f snull.o snull.mod snull.mod.c snull.mod.o
+	rm -rf *.o *~ core .depend .*.cmd *.ko *.mod.c .tmp_versions *.mod modules.order *.symvers
 
-fclean: clean
-	rm -f snull.ko
+depend .depend dep:
+	$(CC) $(EXTRA_CFLAGS) -M *.c > .depend
 
-re: fclean all
+ifeq (.depend,$(wildcard .depend))
+include .depend
+endif
+
